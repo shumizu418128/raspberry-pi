@@ -22,6 +22,7 @@ WIFI_SSID = secrets.WIFI_SSID
 WIFI_PASSWORD = secrets.WIFI_PASSWORD
 WEBHOOK_URL = secrets.WEBHOOK_URL
 WEBHOOK_STYLE = secrets.WEBHOOK_STYLE
+WEBHOOK_API_KEY = secrets.WEBHOOK_API_KEY
 
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
@@ -102,8 +103,14 @@ def has_uuid(adv_data, target):
     return False
 
 
+def format_checked_at():
+    t = time.localtime()
+    return "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}+09:00".format(
+        t[0], t[1], t[2], t[3], t[4], t[5]
+    )
+
+
 def build_payload(is_present, rssi):
-    state = "appeared" if is_present else "disappeared"
     text = "スマホを検知しました" if is_present else "スマホが離れました"
     if rssi:
         text += " (RSSI: {})".format(rssi)
@@ -115,10 +122,9 @@ def build_payload(is_present, rssi):
     if WEBHOOK_STYLE == "ntfy":
         return text
     return {
-        "event": state,
-        "present": is_present,
-        "rssi": rssi,
-        "source": "pico-wh",
+        "event": "connected" if is_present else "disconnected",
+        "online": bool(is_present),
+        "checked_at": format_checked_at(),
     }
 
 
@@ -128,6 +134,9 @@ def send_webhook(is_present, rssi):
         return False
 
     payload = build_payload(is_present, rssi)
+    headers = {"Content-Type": "application/json"}
+    if WEBHOOK_API_KEY:
+        headers["x-api-key"] = WEBHOOK_API_KEY
     last_error = None
 
     for attempt in range(1, WEBHOOK_RETRY + 1):
@@ -137,7 +146,7 @@ def send_webhook(is_present, rssi):
             if WEBHOOK_STYLE == "ntfy":
                 resp = requests.post(WEBHOOK_URL, data=payload)
             else:
-                resp = requests.post(WEBHOOK_URL, json=payload)
+                resp = requests.post(WEBHOOK_URL, json=payload, headers=headers)
 
             ok = 200 <= resp.status_code < 300
             print("Webhook {}: {} {}".format(
@@ -214,8 +223,7 @@ while True:
     if present is None:
         if seen_recently:
             present = True
-            print("検出！ RSSI:", last_rssi)
-            send_webhook(True, last_rssi)
+            print("起動時検出 RSSI: {}（通知なし）".format(last_rssi))
         elif time.ticks_ms() > TIMEOUT_MS:
             present = False
             print("起動後タイムアウト: 未検出（通知なし）")
