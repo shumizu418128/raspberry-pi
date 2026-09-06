@@ -30,6 +30,9 @@ TARGET_UUID16 = const(0xFFF0)
 TIMEOUT_MS = 3000
 WIFI_TIMEOUT_MS = 20000
 WEBHOOK_RETRY = 2
+LED_PULSE_MS = 80
+LED_PRESENT_INTERVAL_MS = 4000
+LED_ABSENT_INTERVAL_MS = 800
 
 led = Pin("LED", Pin.OUT)
 led.off()
@@ -38,6 +41,8 @@ last_seen = 0
 last_rssi = 0
 scan_done = True
 present = None  # None=起動直後, True=検知中, False=不在
+led_cycle_started = 0
+led_was_present = None
 
 
 def connect_wifi():
@@ -167,6 +172,25 @@ def bt_irq(event, data):
         scan_done = True
 
 
+def update_led(is_present):
+    global led_cycle_started, led_was_present
+    now = time.ticks_ms()
+    if is_present != led_was_present:
+        led_cycle_started = now
+        led_was_present = is_present
+
+    interval = LED_PRESENT_INTERVAL_MS if is_present else LED_ABSENT_INTERVAL_MS
+    elapsed = time.ticks_diff(now, led_cycle_started)
+    if elapsed >= interval:
+        led_cycle_started = now
+        elapsed = 0
+
+    if elapsed < LED_PULSE_MS:
+        led.on()
+    else:
+        led.off()
+
+
 wlan = connect_wifi()
 
 ble = bluetooth.BLE()
@@ -190,23 +214,21 @@ while True:
     if present is None:
         if seen_recently:
             present = True
-            led.on()
             print("検出！ RSSI:", last_rssi)
             send_webhook(True, last_rssi)
         elif time.ticks_ms() > TIMEOUT_MS:
             present = False
-            led.off()
             print("起動後タイムアウト: 未検出（通知なし）")
     elif seen_recently != present:
         present = seen_recently
         if present:
-            led.on()
             print("状態変化: 出現 RSSI:", last_rssi)
             send_webhook(True, last_rssi)
         else:
-            led.off()
             print("状態変化: 離脱")
             send_webhook(False, last_rssi)
+
+    update_led(present is True)
 
     if not wlan.isconnected():
         print("Wi-Fi切断。再接続します")
