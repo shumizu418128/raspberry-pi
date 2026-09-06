@@ -11,15 +11,17 @@ try:
 except ImportError:
     import requests
 
+try:
+    import secrets
+except ImportError:
+    raise ImportError(
+        "secrets.py がありません。secrets.example.py をコピーして設定してください"
+    )
 
-# ===== ここだけ書き換える =====
-WIFI_SSID = "YOUR_WIFI_SSID"
-WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"
-WEBHOOK_URL = "https://discord.com/api/webhooks/xxxx/yyyy"
-
-# "discord" / "ntfy" / "json"
-WEBHOOK_STYLE = "discord"
-# ============================
+WIFI_SSID = secrets.WIFI_SSID
+WIFI_PASSWORD = secrets.WIFI_PASSWORD
+WEBHOOK_URL = secrets.WEBHOOK_URL
+WEBHOOK_STYLE = secrets.WEBHOOK_STYLE
 
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
@@ -103,6 +105,8 @@ def build_payload(is_present, rssi):
 
     if WEBHOOK_STYLE == "discord":
         return {"content": text}
+    if WEBHOOK_STYLE == "slack":
+        return {"text": text}
     if WEBHOOK_STYLE == "ntfy":
         return text
     return {
